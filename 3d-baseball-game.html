@@ -413,7 +413,9 @@ const CONFIG = {
            // maxThrow = 외야수가 한 번에 던져 보낼 수 있는 한계 거리. 이보다 멀면 중계를 씁니다.
            outRelease: 1.20, outSpeed: 40, maxThrow: 70,
            relayCut: 35, relayHold: 0.75, maxThrows: 4,
-           decide: 1.5 },   // 주자가 모두 멈춘 뒤 이만큼 지나면 상황 종료
+           // 송구 명령이 없고 주자가 모두 멈춘 채로 이만큼 지나면 그대로 상황 종료.
+           // (중계 송구를 고르기 전에도 똑같이 적용됩니다)
+           decide: 2.0 },
     // 주루: 홈→1루 4.4초. 그 밖에는 진루 베이스 수에 따라 3.8 / 7.8 / 12.0초.
     // 타자가 2루 이상 갈 때는 4.4초에 위 값을 더합니다(홈까지 4.4+12.0=16.4초).
     // lead = 이미 루에 나가 있는 주자의 리드·스타트 이득(타자에게는 적용하지 않습니다)
@@ -1092,6 +1094,7 @@ function simulateBatted(exitKmh, launchDeg, sprayDeg){
   const dt = 1/120;
   let t = 0, apex = pos.y, bounced = 0, landed = null, landT = 0;
   let wallState = 0;                   // 0 = 아직 담장 전, 1 = 맞고 튐, 2 = 넘어감
+  let overI = null;                    // 담장을 넘어간 경로 인덱스
   let rolling = false, outOfPlay = false;
   const GR = ph.ground;
   const curve = gauss(GR.curve);      // 이 타구가 구르며 휘는 방향과 정도
@@ -1134,7 +1137,9 @@ function simulateBatted(exitKmh, launchDeg, sprayDeg){
       const wr = wallRadius(Math.atan2(pos.x, -pos.z)*R2D);
       if (rr >= wr){
         // 바운드 없이 넘으면 홈런, 한 번이라도 튀고 넘으면 인정 2루타
-        if (pos.y > CONFIG.field.wallHeight) wallState = bounced > 0 ? 3 : 2;
+        if (pos.y > CONFIG.field.wallHeight){
+          wallState = bounced > 0 ? 3 : 2; overI = path.length;
+        }
         else {
           wallState = 1;
           const nx = pos.x/rr, nz = pos.z/rr;
@@ -1169,7 +1174,7 @@ function simulateBatted(exitKmh, launchDeg, sprayDeg){
   const land = landed || pos.clone();
   const dist = Math.hypot(land.x, land.z);
   return { path, land, hangTime: landT, dist, apex, sprayDeg, launchDeg, exitKmh,
-           wallState, outOfPlay, finalPos: pos.clone() };
+           wallState, overI, outOfPlay, finalPos: pos.clone() };
 }
 
 /* =========================================================================
@@ -1228,20 +1233,26 @@ function backupNear(pos, exclude){
 // 어떤 지점이 페어 지역인가
 const inFair = p => Math.abs(Math.atan2(p.x, -p.z)*R2D) <= CONFIG.field.foulAngle;
 
-/* 페어/파울 규칙
-   · 1·3루 베이스를 지난 뒤의 첫 접촉 지점이 페어면 페어, 파울이면 파울로 확정됩니다.
-   · 베이스 안쪽(내야)에서 파울 지역을 구르는 공은 아직 미확정입니다.
-     야수가 건드리지 않고 지켜보며, 다시 페어로 들어오면 페어, 파울로 멈추면 파울입니다.
+/* 페어/파울 규칙 — 기준선은 홈–1루, 홈–3루입니다.
+   · 수비수가 파울 지역에서 공을 잡거나 건드리면 파울입니다.
+   · 첫 바운드가 1·3루 베이스 밖(외야)이면 그 지점에서 바로 확정됩니다.
+     파울 지역이거나 파울 담장을 넘어갔으면 파울, 페어 지역이면 페어입니다.
+   · 첫 바운드가 베이스 안쪽(내야)이면 아직 미확정입니다.
+     – 아무도 건드리지 않고 공이 완전히 멈추면 멈춘 자리로 가립니다.
+     – 베이스를 지나 외야 파울 지역으로 넘어가도, 직전 접지가 내야 페어였으면 페어입니다.
+     – 파울 지역에서 바운드됐어도 페어 지역으로 들어와 야수가 페어에서 잡으면 페어입니다.
+   판정은 확정되는 그 순간에 내려집니다. 야수가 공을 주우러 갈 때까지 기다리지 않습니다.
    반환: FOUL | HR | GRD(인정 2루타) | AIR(노바운드 포구) | GROUND(바운드 후 회수)          */
 function planPlay(sim){
-  const f = CONFIG.field, R = f.fairBaseR;
+  const f = CONFIG.field, R = CONFIG.fairBaseR, B = f.body;
 
-  // 담장 판정은 비행 시뮬레이션이 이미 내렸습니다(2 = 넘어감, 3 = 바운드 후 넘어감).
-  if (sim.wallState === 2) return { code:'HR',  dist: sim.dist };
-  if (sim.wallState === 3) return { code:'GRD', dist: sim.dist };
+  // 노바운드로 담장을 넘어가면 홈런입니다.
+  if (sim.wallState === 2) return { code:'HR', dist: sim.dist };
 
-  const nb = firstBounceIndex(sim);
-  const B = f.body;
+  // 바운드 뒤 담장을 넘어가는 타구(인정 2루타 후보)는 넘어가기 전까지만 수비가 손댈 수 있습니다.
+  // 그 안에 처리하면 평범한 타구, 못 하면 인정 2루타입니다.
+  const capI = (sim.wallState === 3 && sim.overI != null) ? sim.overI : sim.path.length;
+  const nb = Math.min(firstBounceIndex(sim), capI);
   const diveOk = Math.random() < B.diveRate;   // 다이빙 성공 여부는 타구당 한 번만 판정
   let muff = null;
 
@@ -1276,31 +1287,70 @@ function planPlay(sim){
              chase: !sim.outOfPlay };
   };
 
-  // 2) 땅에 닿은 뒤 — 페어/파울이 확정될 때까지 따라가며, 페어면 회수합니다.
+  // 공을 놓친 야수는 놓친 자리에서 bobbleDelay 뒤에 다시 움직입니다.
   const pen = muff ? { k: muff.k, t0: muff.t + CONFIG.bobbleDelay, pos: muff.pos } : null;
-  const startI = Math.max(nb, muff ? Math.round(muff.t*120) : 0, 1);
-  for (let i=startI;i<sim.path.length;i+=2){
-    const p = sim.path[i], t = i/120;
-    const fair = inFair(p);
-    const r = Math.hypot(p.x, p.z);
-    if (!fair){
-      if (r > R) return foulPlan(t, p);         // 베이스를 지나 파울 지역 — 확정
-      continue;                                  // 내야 파울 지역 — 아직 미확정, 지켜봅니다
-    }
-    const reach = reacherAt(p, t, 'ground', pen);
-    if (!reach) continue;
+  const muffAt = muff ? { pos: muff.pos.clone(), t: muff.t } : null;
+  // holdT = 야수가 공에 손을 대는 시각, t = 던질 수 있게 되는 시각(더듬으면 그만큼 늦습니다)
+  const groundPlan = (p, t, reach) => {
     const bobble = !muff && (reach.k < 5 || reach.k === 8) && Math.random() < CONFIG.errorRate;
-    return { code:'GROUND', t: t + (bobble ? CONFIG.bobbleDelay : 0),
-             pos:p.clone(), fielderIdx:reach.k,
+    return { code:'GROUND', holdT: t, t: t + (bobble ? CONFIG.bobbleDelay : 0),
+             pos: p.clone(), fielderIdx: reach.k, bobble,
              muffed: (muff ? muff.routine : bobble),
-             backupIdx: backupNear(p, reach.k),
-             muffFrom: (muff && muff.k === reach.k) ? muff.pos : null };
+             backupIdx: backupNear(p, reach.k), muffAt };
+  };
+
+  // 2) 땅에 닿은 뒤 — 페어/파울을 가리며 따라가고, 페어면 회수합니다.
+  let settled = null;          // null = 미확정(내야 바운드), true = 페어 확정
+  let lastGround = null;       // 마지막으로 땅에 닿은 지점
+  if (nb < capI){
+    lastGround = sim.path[nb];
+    if (Math.hypot(lastGround.x, lastGround.z) > R){        // 첫 바운드가 외야
+      if (!inFair(lastGround)) return foulPlan(nb/120, lastGround);
+      settled = true;                                        // 외야 페어 — 페어 확정
+    }
   }
 
-  // 3) 아무도 닿지 못한 채 멈춘 공 — 멈춘 자리로 페어/파울을 가릅니다.
-  const last = sim.path[sim.path.length-1];
-  const restT = sim.path.length/120;
-  if (!inFair(last)) return foulPlan(restT, last);
+  // 아직 미확정인 공이 파울 지역에 있을 때, 야수는 곧바로 줍지 않고 지켜봅니다.
+  // 다시 페어로 들어올 여지가 없어진 뒤에야 손을 댑니다(그때 잡으면 파울).
+  let lastFairI = -1;
+  for (let i=nb;i<capI;i++) if (inFair(sim.path[i])) lastFairI = i;
+
+  const startI = Math.max(nb, muff ? Math.round(muff.t*120) : 0, 1);
+  for (let i=startI;i<capI;i+=2){
+    const p = sim.path[i], t = i/120;
+    const fair = inFair(p);
+
+    if (settled === null && Math.hypot(p.x, p.z) > R){
+      // 1·3루 베이스를 지났습니다 — 여기서 페어/파울이 갈립니다.
+      if (fair) settled = true;
+      else if (lastGround && inFair(lastGround) &&
+               Math.hypot(lastGround.x, lastGround.z) <= R) settled = true;   // 직전 접지가 내야 페어
+      else return foulPlan(t, p);
+    }
+    if (p.y <= 0.09) lastGround = p;
+
+    // 미확정인 채 파울 지역을 구르는 공 — 페어로 돌아올 여지가 남아 있으면 지켜봅니다.
+    if (settled !== true && !fair && i < lastFairI) continue;
+
+    const reach = reacherAt(p, t, 'ground', pen);
+    if (!reach) continue;
+    if (settled !== true && !fair) return foulPlan(t, p);    // 파울 지역에서 잡았습니다
+    return groundPlan(p, t, reach);
+  }
+
+  // 3) 수비가 손대기 전에 바운드된 공이 담장을 넘었습니다 — 인정 2루타입니다.
+  if (sim.wallState === 3 && sim.overI != null){
+    const p = sim.path[Math.min(sim.overI, sim.path.length-1)];
+    return { code:'GRD', dist: sim.dist, t: sim.overI/120,
+             pos: new THREE.Vector3(p.x, 0, p.z),
+             fielderIdx: foulPlan(0, p).fielderIdx };       // 가장 가까운 야수가 따라갑니다
+  }
+
+  // 4) 아무도 닿지 못한 채 멈췄거나 경기장 밖으로 나간 공 — 그 자리로 페어/파울을 가릅니다.
+  const endI = Math.max(0, Math.min(capI, sim.path.length) - 1);
+  const last = sim.path[endI];
+  const restT = (endI + 1)/120;
+  if (settled !== true && !inFair(last)) return foulPlan(restT, last);
 
   let best = 0, bt = 1e9;
   for (let k=0;k<G.fielders.length;k++){
@@ -1312,9 +1362,11 @@ function planPlay(sim){
     const t = t0 + Math.hypot(h.x-last.x, h.z-last.z)/speed;
     if (t < bt){ bt = t; best = k; }
   }
-  return { code:'GROUND', t: Math.max(bt, restT),
-           pos: last.clone(), fielderIdx: best,
-           muffed: (muff ? muff.routine : false), backupIdx: backupNear(last, best) };
+  const gt = Math.max(bt, restT);
+  return { code:'GROUND', t: gt, holdT: gt,
+           pos: last.clone(), fielderIdx: best, bobble: false,
+           muffed: (muff ? muff.routine : false),
+           backupIdx: backupNear(last, best), muffAt };
 }
 
 /* ---------- 주자·송구 시간 계산 ---------- */
@@ -1897,7 +1949,7 @@ function startWildPlay(b){
     path.push(new THREE.Vector3(lerp(0, pos.x, u), 0.06, lerp(0.6, pos.z, u)));
   }
   const sim = { path, land: path[0], hangTime: 0, dist: 0, apex: 0.06,
-                sprayDeg: 0, launchDeg: 0, exitKmh: 0, wallState: 0,
+                sprayDeg: 0, launchDeg: 0, exitKmh: 0, wallState: 0, overI: null,
                 outOfPlay: false, finalPos: path[path.length-1] };
   const plan = { code:'GROUND', t: getT, pos: new THREE.Vector3(pos.x, 0, pos.z),
                  fielderIdx: 8, muffed: false, backupIdx: null };
@@ -1976,8 +2028,9 @@ function extendPlans(rs, P){
       if (eff > runnerETA(r, nxt) + margin) r.plan = nxt;
       else break;
     }
-    const lead = arr[i-1];
-    if (lead && lead.plan < 3) r.plan = Math.max(r.origin, Math.min(r.plan, lead.plan - 1));
+    // 앞 주자를 추월할 수는 없습니다. 타자 주자는 최소한 1루까지는 갑니다.
+    const lead = arr[i-1], floorB = r.origin < 0 ? 0 : r.origin;
+    if (lead && lead.plan < 3) r.plan = Math.max(floorB, Math.min(r.plan, lead.plan - 1));
   });
 }
 
@@ -2050,13 +2103,12 @@ function startBattedBall(contact){
     fielder: plan.fielderIdx != null ? G.fielders[plan.fielderIdx] : null,
     from: null, resolved: false
   };
-  // 공을 놓친 야수가 그대로 회수하러 간다면, 놓친 지점에서 출발합니다.
+  // 공을 놓친 야수도 제자리에서 출발합니다. 놓친 지점을 거쳐 다시 쫓아가는 모습은
+  // updateBatted 가 plan.muffAt 으로 두 구간에 나눠 그립니다.
   S.play.backup = backupIdx != null ? G.fielders[backupIdx] : null;
   S.play.backupIdx0 = backupIdx;
   if (S.play.backup) S.play.backupFrom = S.play.backup.mesh.position.clone();
-  if (S.play.fielder) S.play.from = plan.muffFrom
-    ? new THREE.Vector3(plan.muffFrom.x, 0, plan.muffFrom.z)
-    : S.play.fielder.mesh.position.clone();
+  if (S.play.fielder) S.play.from = S.play.fielder.mesh.position.clone();
   S.batted = S.play;                    // 카메라·그림자 등 기존 코드와 호환
   S.phase = 'batted';
   S.camMode = 'follow';
@@ -2077,6 +2129,7 @@ function updateBatted(dt){
 
   // 공
   let showBall = P.stage !== 'trot';
+  let hold = 1e9;                     // 야수가 공을 손에 넣는 시각
   if (P.stage === 'throw'){
     const th = P.thrown;
     const kRaw = clamp((P.t - th.at)/th.dur, 0, 1);
@@ -2119,10 +2172,17 @@ function updateBatted(dt){
         lerp(th.moverFrom.x, th.to[0], mk), 0, lerp(th.moverFrom.z, th.to[1], mk));
     }
   } else {
-    const hold = (P.plan.code==='AIR' || P.plan.code==='GROUND') ? P.plan.t : 1e9;
+    // hold = 야수가 공에 손을 대는 시각. 그 뒤로 공은 경로를 따라 더 굴러가지 않습니다.
+    if (P.plan.code==='AIR' || P.plan.code==='GROUND')
+      hold = P.plan.holdT != null ? P.plan.holdT : P.plan.t;
     if (P.t >= hold) showBall = false;          // 야수 글러브 안 — 공은 보이지 않습니다
     const idx = Math.min(Math.floor(Math.min(P.t, hold)*120), P.sim.path.length-1);
     G.ball.position.copy(P.sim.path[idx]);
+    // 더듬은 공은 야수 발밑에 떨어져 있습니다 — 다시 잡을 때까지 보입니다.
+    if (P.plan.bobble && P.t >= hold && P.t < P.plan.t){
+      showBall = true;
+      G.ball.position.set(P.plan.pos.x, CONFIG.physics.ground.radius, P.plan.pos.z);
+    }
   }
   G.ball.visible = showBall;
   G.shadow.visible = showBall;
@@ -2131,7 +2191,7 @@ function updateBatted(dt){
 
   for (let i=0;i<G.trail.length;i++){
     const j = Math.floor(P.t*120) - i*3;
-    if (showBall && P.stage !== 'throw' && j >= 0 && j < P.sim.path.length){
+    if (showBall && P.stage !== 'throw' && P.t < hold && j >= 0 && j < P.sim.path.length){
       G.trail[i].position.copy(P.sim.path[j]); G.trail[i].visible = true;
     } else G.trail[i].visible = false;
   }
@@ -2143,11 +2203,17 @@ function updateBatted(dt){
   // 처리하는 야수 — 뜬공 체공시간에 맞추는 게 아니라 7m/s로 곧장 달려가
   // 먼저 도착하면 그 자리에서 기다립니다. (송구 중에도 계속 갱신해 튀지 않게)
   if (P.fielder && P.plan.pos && preThrow){
-    const travel = Math.hypot(P.plan.pos.x - P.from.x, P.plan.pos.z - P.from.z)
-                 / CONFIG.field.fielderSpeed;
-    const k = clamp((P.t - CONFIG.field.fielderReact)/Math.max(0.15, travel), 0, 1);
-    P.fielder.mesh.position.set(
-      lerp(P.from.x, P.plan.pos.x, k), 0, lerp(P.from.z, P.plan.pos.z, k));
+    // 공을 놓쳤다면 ① 놓친 지점까지 달려갔다가 ② 거기서 다시 공을 쫓아갑니다.
+    const M = P.plan.muffAt;
+    let from = P.from, to = P.plan.pos, t0 = CONFIG.field.fielderReact;
+    if (M){
+      const back = M.t + CONFIG.bobbleDelay;
+      if (P.t < back) to = M.pos;
+      else { from = M.pos; to = P.plan.pos; t0 = back; }
+    }
+    const travel = Math.hypot(to.x - from.x, to.z - from.z) / CONFIG.field.fielderSpeed;
+    const k = clamp((P.t - t0)/Math.max(0.15, travel), 0, 1);
+    P.fielder.mesh.position.set(lerp(from.x, to.x, k), 0, lerp(from.z, to.z, k));
   }
 
   // 백업 야수 — 처리 지점 가까이까지 따라 붙습니다. (독립적으로 계속 갱신)
@@ -2196,7 +2262,8 @@ function updateBatted(dt){
     const homeT = runnerArrival(-1, 3)/CONFIG.field.run.trot;
     if (P.t >= homeT + 1.5){ finalizePlay(true); return; }
   }
-  if (P.stage === 'ball' && P.plan.code === 'GRD'  && P.t > P.sim.path.length/120) return grdResult();
+  if (P.stage === 'ball' && P.plan.code === 'GRD' &&
+      P.t > (P.plan.t != null ? P.plan.t + 0.4 : P.sim.path.length/120)) return grdResult();
 
   if (P.stage === 'ball' && P.plan.code === 'AIR' && P.t >= P.plan.t){
     P.stage = 'field';
@@ -2271,6 +2338,19 @@ function updateBatted(dt){
 }
 
 /* ---------- 주자 그리기 ---------- */
+// 원래 베이스에서 몇 베이스나 진행했는가(소수 = 베이스 사이)
+function runnerProg(r, t0){
+  const t = (t0 - (r.startT || 0)) * (r.trot ? CONFIG.field.run.trot : 1);
+  const maxN = Math.max(0, r.plan - r.origin);
+  let prog = 0, prevT = 0;
+  for (let n=1;n<=maxN;n++){
+    const tn = runnerArrival(r.origin, r.origin + n);
+    if (t >= tn){ prog = n; prevT = tn; continue; }
+    prog = (n-1) + clamp((t - prevT)/Math.max(0.001, tn - prevT), 0, 1);
+    break;
+  }
+  return clamp(prog, 0, maxN);
+}
 function runnerXZ(r, t0){
   // 뜬공 리드 — 나갔다가 포구 시점부터 원래 베이스로 되돌아옵니다.
   if (r.stray && r.plan === r.origin){
@@ -2282,16 +2362,7 @@ function runnerXZ(r, t0){
     return [ lerp(A[0], B[0], frac), lerp(A[1], B[1], frac) ];
   }
   // 베이스별 도달 시각을 그대로 따라 움직입니다.
-  const t = (t0 - (r.startT || 0)) * (r.trot ? CONFIG.field.run.trot : 1);
-  const maxN = Math.max(0, r.plan - r.origin);
-  let prog = 0, prevT = 0;
-  for (let n=1;n<=maxN;n++){
-    const tn = runnerArrival(r.origin, r.origin + n);
-    if (t >= tn){ prog = n; prevT = tn; continue; }
-    prog = (n-1) + clamp((t - prevT)/Math.max(0.001, tn - prevT), 0, 1);
-    break;
-  }
-  prog = clamp(prog, 0, maxN);
+  const prog = runnerProg(r, t0);
   const seg = Math.min(Math.floor(prog), 3), frac = prog - seg;
   const ai = r.origin + seg, bi = Math.min(ai + 1, 3);
   const A = ai < 0 ? [0,0] : BASE_XZ[ai], B = BASE_XZ[bi];
@@ -2411,6 +2482,53 @@ function stillRunning(ta){
 function restartRunner(r, now){
   const eta = runnerETA(r, r.plan);
   if (eta < now) r.startT = (r.startT || 0) + (now - eta);
+}
+
+/* ---------- 주루 명령 ----------
+   플레이어가 주루맵에서 주자를 누르면 "한 베이스 더"가 실제로 실행됩니다.
+   예전에는 송구 시간과 비교해 안전할 때만 움직여서, 명령해도 그대로 서 있는 일이
+   있었습니다. 이제는 앞 주자가 막고 있지 않는 한 무조건 뜁니다.                    */
+
+// 뜬공을 보며 리드 중이던 주자를 지금 서 있는 자리에서 그대로 달리게 합니다.
+function releaseStray(r){
+  const P = S.play;
+  if (!r.stray){ return; }
+  const s = r.stray;
+  const span = runnerArrival(r.origin, Math.min(r.origin + 1, 3)) || 0.001;
+  const frac = P.t <= s.catchT
+    ? s.out * clamp(P.t/Math.max(0.05, s.catchT), 0, 1)
+    : s.out * clamp(1 - (P.t - s.catchT)/Math.max(0.05, s.retouchT - s.catchT), 0, 1);
+  r.stray = null;
+  // 포구 뒤 태그업은 정지 상태에서 출발하므로 리드 이득만큼 늦게 뜁니다.
+  r.startT = P.t + (P.airHold ? CONFIG.field.run.lead : 0) - frac*span;
+}
+
+// 주자 한 명을 한 베이스 더 보냅니다. 앞 주자가 막고 있으면 앞 주자부터 밀어냅니다.
+function advanceOne(r){
+  const P = S.play;
+  if (!P || !r || r.out || r.plan >= 3) return false;
+  const want = r.plan + 1;
+  const lead = P.runners.filter(x=>!x.out && x.origin > r.origin)
+                        .sort((a,b)=>a.origin - b.origin)[0];
+  while (lead && lead.plan < 3 && lead.plan <= want){
+    if (!advanceOne(lead)) return false;          // 앞이 꽉 막혔습니다
+  }
+  // 리드 중이었으면 releaseStray 가 출발 시각을 맞춰 주므로 restartRunner 를 겹쳐 쓰면 안 됩니다.
+  if (r.stray) releaseStray(r);                   // 서 있던 자리에서 그대로 이어 달립니다
+  else restartRunner(r, P.t);                     // 멈춰 있었다면 지금 다시 출발
+  r.plan = want;
+  r.extra = 1;
+  return true;
+}
+
+// 명령을 거둡니다 — 아직 지나치지 않은 베이스까지만 되돌릴 수 있습니다.
+function holdRunner(r){
+  const P = S.play;
+  r.extra = 0;
+  const minBase = r.origin < 0 ? 0 : r.origin;
+  const committed = Math.max(minBase, r.origin + Math.ceil(runnerProg(r, P.t) - 1e-6));
+  r.plan = Math.max(minBase, Math.min(r.plan, committed));
+  if (r.forced) r.plan = Math.max(r.plan, minBase + (r.origin < 0 ? 0 : 1));
 }
 
 // 지금 움직이고 있는 주자가 있는가 (태그업 대기 종료 판정용)
@@ -2811,32 +2929,30 @@ function bindMinimap(){
   for (let i=0;i<4;i++){
     $('mmR'+i).onclick = e=>{
       e.stopPropagation();
-      const rs = (S.play && S.play.runners) || [];
-      const r = rs[i];
-      // 뜬공 포구 후: 리터치가 끝났으면 태그업
-      if (S.play && S.play.airHold && r && !r.out && r.stray && isPlayerBatting()){
-        if (S.play.t < r.stray.retouchT){
-          judge('리터치 전', '아직 베이스로 돌아오는 중입니다', 'var(--alert)');
-          return;
-        }
-        const nxt = r.origin + 1;
-        if (nxt > 3) return;
-        r.startT = S.play.t + CONFIG.field.run.lead;
-        r.plan = nxt; r.stray = null;
-        S.play.log.push(`${r.origin+1}루 주자 태그업`);
-        updateMinimap();
+      const P = S.play;
+      if (!P){ if (S.phase === 'batter_ready') trySteal(); return; }
+      const r = (P.runners || [])[i];
+      if (!r || r.out || !isPlayerBatting()) return;
+
+      // 뜬공을 잡은 뒤에는 리터치를 마쳐야 뛸 수 있습니다.
+      if (P.airHold && r.stray && r.plan === r.origin && P.t < r.stray.retouchT){
+        judge('리터치 전', '아직 베이스로 돌아오는 중입니다', 'var(--alert)');
         return;
       }
-      if (S.play && r && !r.out && isPlayerBatting()){
-        r.extra = r.extra ? 0 : 1;                   // 한 베이스 더 노리기
-        if (r.extra) restartRunner(r, S.play.t);     // 멈춰 있었다면 지금 다시 출발
-        if (S.play.stage === 'field' || S.play.stage === 'throw')
-          extendPlans([r], { pos:S.play.pos0, t:S.play.t,
-                             of: isOutfielder(S.play.holderIdx), cov: S.play.cover });
-        updateMinimap();
+      const tagUp = P.airHold && !!r.stray;
+
+      if (r.extra){
+        holdRunner(r);
+      } else if (advanceOne(r)){
+        P.log.push(tagUp ? `${r.origin+1}루 주자 태그업`
+                         : `${r.origin < 0 ? '타자' : (r.origin+1)+'루'} 주자 추가 진루`);
+      } else {
+        judge('진루 불가', '앞 주자가 막고 있습니다', 'var(--alert)');
         return;
       }
-      if (!S.play && S.phase === 'batter_ready') trySteal();
+      P.idle = 0;                 // 명령을 내렸으니 상황 종료 카운트를 다시 셉니다
+      drawRunners(P.t);
+      updateMinimap();
     };
   }
 }
