@@ -144,7 +144,7 @@ canvas{display:block}
 
 /* ---------- 스태미나 ---------- */
 #stamwrap{position:fixed;left:12px;bottom:12px;background:var(--panel);border:1px solid var(--line);
-  padding:9px 12px;display:none;backdrop-filter:blur(6px);width:168px}
+  padding:9px 12px;display:none;backdrop-filter:blur(6px);width:168px;z-index:21}
 #stamwrap .lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--chalk-dim);margin-bottom:6px}
 #stamwrap .lbl b{font-family:var(--mono);color:var(--chalk);font-weight:500}
 #stambar{height:6px;background:rgba(0,0,0,.4)}
@@ -203,14 +203,45 @@ canvas{display:block}
 .keys dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12px;align-items:baseline}
 .keys dt{font-family:var(--mono);font-size:11px;color:var(--chalk);white-space:nowrap}
 .keys dd{color:var(--chalk-dim)}
+#helpbtn{margin-top:14px;background:transparent;border:1px solid var(--line);color:var(--chalk-dim);
+  font-family:var(--font);font-size:13px;padding:9px 26px;cursor:pointer;transition:.14s}
+#helpbtn:hover{border-color:var(--bulb);color:var(--bulb)}
+
+/* ---------- 도움말 (기존 화면 위에 뜨는 작은 창) ---------- */
+#helpmodal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;
+  padding:20px;background:rgba(4,10,8,.74);backdrop-filter:blur(3px)}
+#helpmodal.on{display:flex}
+.help-box{position:relative;display:flex;flex-direction:column;width:min(680px,92vw);
+  max-height:min(78vh,620px);background:#0b1a14;border:1px solid var(--line);
+  box-shadow:0 24px 64px rgba(0,0,0,.62)}
+.help-hd{flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;
+  padding:16px 18px 13px;border-bottom:1px solid var(--line)}
+.help-hd h2{font-size:16px;font-weight:700;letter-spacing:.01em}
+.help-hd p{font-size:11px;color:var(--chalk-dim);margin-top:4px}
+#helpclose{flex:0 0 auto;width:30px;height:30px;line-height:1;background:transparent;
+  border:1px solid var(--line);color:var(--chalk-dim);font-family:var(--font);font-size:15px;
+  cursor:pointer;transition:.14s}
+#helpclose:hover{border-color:var(--alert);color:var(--alert)}
+.help-bd{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 18px 20px}
+.help-bd .keys{margin-top:0;width:auto;grid-template-columns:1fr;gap:20px}
+
 #finalbox{text-align:center}
 #finalscore{font-family:var(--mono);font-size:clamp(40px,10vw,76px);font-weight:700;letter-spacing:-.02em;
   margin:14px 0 4px}
 #finalline{font-size:14px;color:var(--chalk-dim);margin-bottom:26px}
 #gameover{display:none}
 
-@media (max-width:720px){
+/* 화면이 좁거나(휴대폰 세로) 낮으면(휴대폰 가로) 하단 구종 버튼이 여러 줄로 늘어나
+   왼쪽 아래의 투수 체력·교체 박스를 덮습니다. 두 경우 모두 최근 5구 로그를 감추고
+   그 자리(오른쪽 위)로 체력 박스를 올립니다. */
+@media (max-width:720px), (max-height:560px){
   #pitchlog{display:none}
+  #stamwrap{left:auto;bottom:auto;right:12px;top:86px;width:150px;padding:8px 10px}
+  #stamwrap .lbl{font-size:10px;margin-bottom:5px}
+  #relievebtn{margin-top:6px;font-size:10px;padding:4px}
+  #pline{font-size:9px;margin-top:5px}
+}
+@media (max-width:720px){
   #minimap{width:112px;padding:8px;bottom:8px;right:8px}
   #mmField{width:96px;height:96px}
   .mm-diamond{width:52px;height:52px;margin:-26px 0 0 -26px}
@@ -227,6 +258,9 @@ canvas{display:block}
   #startbtn{padding:12px 40px;font-size:15px}
   #role{font-size:11px;padding:6px 10px}
   #hint{bottom:88px;font-size:11px}
+  #helpmodal{padding:12px}
+  .help-box{max-height:84vh}
+  .help-bd .keys{gap:14px}
 }
 @media (prefers-reduced-motion:reduce){
   #judge.show{animation-duration:.01s;opacity:1}
@@ -344,28 +378,7 @@ canvas{display:block}
     </div>
   </div>
   <button id="startbtn">경기 시작</button>
-  <div class="keys">
-    <section>
-      <h3>타석에 설 때</h3>
-      <dl>
-        <dt>마우스 / 드래그</dt><dd>조준 원을 옮깁니다. 존 주변에서만 움직이며, 존 밖으로 공 2개를 넘어가면 원이 붉게 변하고 스윙이 나가지 않습니다</dd>
-        <dt>좌클릭 · 탭</dt><dd>아래에서 고른 스윙으로 휘두릅니다. 모바일은 치고 싶은 지점을 그대로 탭하세요</dd>
-        <dt>J · 우클릭 K</dt><dd>일반 스윙 / 파워 스윙 — 타이밍 여유는 같습니다. 다만 파워는 히트존이 절반이라, 안쪽 작은 원의 한가운데로 정확히 맞혀야 담장을 넘기고 조금만 빗맞으면 뜬공이나 땅볼이 됩니다</dd>
-        <dt>Space</dt><dd>투구를 요청합니다</dd>
-        <dt>D · 주루맵</dt><dd>주자가 있을 때 도루를 시도합니다. 타구가 굴러가는 동안에는 오른쪽 주루맵에서 주자를 눌러 한 베이스 더 노릴 수 있고, 뜬공을 잡힌 뒤에는 같은 방식으로 태그업을 지시합니다(리터치가 끝나야 출발합니다)</dd>
-        <dt>모바일</dt><dd>화면 왼쪽을 탭하면 일반, 오른쪽을 탭하면 파워 스윙</dd>
-      </dl>
-    </section>
-    <section>
-      <h3>마운드에 설 때</h3>
-      <dl>
-        <dt>1 – 6</dt><dd>구종을 고릅니다</dd>
-        <dt>마우스 / WASD</dt><dd>목표 지점을 옮깁니다. 존 밖으로 공 2개까지만 조준할 수 있습니다</dd>
-        <dt>클릭 · Space</dt><dd>조준 확정 → 릴리스 미터를 멈춥니다. 범위 밖에서는 확정되지 않습니다</dd>
-        <dt>1 · 2 · 3 · H</dt><dd>야수가 공을 잡으면 송구 버튼이 뜹니다. 공이 베이스에 닿는 시각으로 아웃을 판정하며, 잡은 뒤에는 이어서 다음 루로 던질 수 있습니다(최대 3번). 늦게 던질수록 주자가 멀리 갑니다</dd>
-      </dl>
-    </section>
-  </div>
+  <button id="helpbtn">조작법 보기</button>
 </div>
 
 <div class="screen" id="gameover">
@@ -374,6 +387,43 @@ canvas{display:block}
     <div id="finalscore">0 : 0</div>
     <div id="finalline"></div>
     <button id="againbtn" class="opt sel" style="padding:13px 40px;font-size:15px">다시 경기하기</button>
+  </div>
+</div>
+
+
+<div id="helpmodal">
+  <div class="help-box">
+    <div class="help-hd">
+      <div>
+        <h2>조작법</h2>
+        <p>공격과 수비에서 쓰는 조작을 모아 두었습니다.</p>
+      </div>
+      <button id="helpclose" aria-label="도움말 닫기">&#10005;</button>
+    </div>
+    <div class="help-bd">
+      <div class="keys">
+        <section>
+          <h3>타석에 설 때</h3>
+          <dl>
+            <dt>마우스 / 드래그</dt><dd>조준 원을 옮깁니다. 존 주변에서만 움직이며, 존 밖으로 공 2개를 넘어가면 원이 붉게 변하고 스윙이 나가지 않습니다</dd>
+            <dt>좌클릭 · 탭</dt><dd>아래에서 고른 스윙으로 휘두릅니다. 모바일은 치고 싶은 지점을 그대로 탭하세요</dd>
+            <dt>J · 우클릭 K</dt><dd>일반 스윙 / 파워 스윙 — 타이밍 여유는 같습니다. 다만 파워는 히트존이 절반이라, 안쪽 작은 원의 한가운데로 정확히 맞혀야 담장을 넘기고 조금만 빗맞으면 뜬공이나 땅볼이 됩니다</dd>
+            <dt>Space</dt><dd>투구를 요청합니다</dd>
+            <dt>D · 주루맵</dt><dd>주자가 있을 때 도루를 시도합니다. 타구가 굴러가는 동안에는 오른쪽 주루맵에서 주자를 눌러 한 베이스 더 노릴 수 있고, 뜬공을 잡힌 뒤에는 같은 방식으로 태그업을 지시합니다(리터치가 끝나야 출발합니다)</dd>
+            <dt>모바일</dt><dd>화면 왼쪽을 탭하면 일반, 오른쪽을 탭하면 파워 스윙</dd>
+          </dl>
+        </section>
+        <section>
+          <h3>마운드에 설 때</h3>
+          <dl>
+            <dt>1 – 6</dt><dd>구종을 고릅니다</dd>
+            <dt>마우스 / WASD</dt><dd>목표 지점을 옮깁니다. 존 밖으로 공 2개까지만 조준할 수 있습니다</dd>
+            <dt>클릭 · Space</dt><dd>조준 확정 → 릴리스 미터를 멈춥니다. 범위 밖에서는 확정되지 않습니다</dd>
+            <dt>1 · 2 · 3 · H</dt><dd>야수가 공을 잡으면 송구 버튼이 뜹니다. 공이 베이스에 닿는 시각으로 아웃을 판정하며, 잡은 뒤에는 이어서 다음 루로 던질 수 있습니다(최대 3번). 늦게 던질수록 주자가 멀리 갑니다</dd>
+          </dl>
+        </section>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -394,10 +444,11 @@ const CONFIG = {
     backstop: 18.3, backstopH: 3.6,      // 홈플레이트 뒤 백스톱 거리·높이
     fielderSpeed: 7.0, fielderReact: 0.42,
     // 야수 체격 — 여기서 포구 가능 반경을 유도합니다.
-    // 서서 닿는 높이는 통계적으로 신장 × 1.29 정도이고, 여기에 글러브 길이를 더합니다.
-    // diveRate = 다이빙까지 해야 닿는 공을 실제로 잡아내는 비율
-    body: { height: 1.80, arm: 0.55, glove: 0.28, step: 0.30, jump: 0.50,
-            dive: 1.00, diveRate: 0.45 },
+    // reachFactor = 서서 글러브가 닿는 높이(신장 대비). 낮출수록 머리 위 타구가 더 빠져나갑니다.
+    // diveHigh    = 이 높이 아래로 오는 공까지만 다이빙 대상으로 봅니다.
+    // tryFail     = 점프·다이빙을 시도했을 때 닿지 못할 확률(닿을 수 있으면 언제나 시도합니다)
+    body: { height: 1.80, arm: 0.55, glove: 0.28, step: 0.30, jump: 0.38,
+            reachFactor: 1.22, dive: 1.15, diveHigh: 1.35, tryFail: 0.10 },
     // 송구 — 내야는 3루→1루(38.8m)가 0.30 + 38.8/43 = 1.20초.
     // 외야는 크로우홉과 중계가 붙어 더 걸립니다.
     // stepDist 안쪽이면 송구 대신 야수가 직접 베이스를 밟습니다.
@@ -490,11 +541,11 @@ const CONFIG = {
    reachDive 낮은 공을 다이빙으로 잡을 때의 반경                                */
 (function deriveReach(){
   const B = CONFIG.field.body;
-  B.reachUp   = B.height*1.29 + B.glove;          // 2.60 m
-  B.reachHigh = B.reachUp + B.jump;               // 3.10 m
-  B.reachSide = B.arm + B.glove + B.step;         // 1.33 m
-  B.reachDive = B.reachSide + B.dive;             // 2.43 m
-  B.reachGround = B.arm + B.glove;                // 1.83 m — 굴러오는 공은 몸 앞에서 처리
+  B.reachUp   = B.height*B.reachFactor + B.glove;  // 2.48 m — 서서 닿는 높이
+  B.reachHigh = B.reachUp + B.jump;                // 2.86 m — 점프해서 닿는 한계
+  B.reachSide = B.arm + B.glove + B.step;          // 1.13 m
+  B.reachDive = B.reachSide + B.dive;              // 2.28 m
+  B.reachGround = B.arm + B.glove;                 // 0.83 m — 굴러오는 공은 몸 앞에서 처리
 })();
 
 /* 조준 허용 범위 — 존 밖으로 공 2개까지. 이 밖에서는 클릭이 무효입니다. */
@@ -651,8 +702,10 @@ function buildField(){
 
   // 홈플레이트 · 타석
   const chalk = new THREE.MeshLambertMaterial({ color: 0xf3f0e3 });
+  // 오각형의 꼭짓점이 그대로 포수(+Z) 쪽을 보고, 투수를 향한 면이 평평해집니다.
+  // 45° 돌려 두면 홈플레이트가 비스듬히 틀어져 보입니다.
   const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.03, 5), chalk);
-  plate.rotation.y = Math.PI/4; plate.position.y = 0.03; scene.add(plate);
+  plate.rotation.y = 0; plate.position.y = 0.03; scene.add(plate);
   [-1,1].forEach(s=>{
     const box = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.01, 1.83),
       new THREE.MeshBasicMaterial({ color:0xf3f0e3, transparent:true, opacity:0.28 }));
@@ -1187,14 +1240,15 @@ function firstBounceIndex(sim){
   return sim.path.length;
 }
 // 시각 t에 공에 손이 닿을 수 있는 야수 중 가장 빠른 사람.
-// 서서 뻗어 닿는지, 다이빙까지 해야 닿는지를 구분해 돌려줍니다.
+// 서서 뻗어 닿는지, 점프해야 닿는지, 다이빙까지 해야 닿는지를 구분해 돌려줍니다.
 // pen = { k, t0, pos } : 공을 놓친 야수는 그 지점에서 t0 시각부터 다시 움직입니다.
 function reacherAt(p, t, mode, pen){
   const f = CONFIG.field, B = f.body;
+  const high = mode === 'air' && p.y > B.reachUp;         // 점프해야 닿는 높이
   const base = mode === 'ground' ? B.reachGround
-             : p.y > B.reachUp   ? B.reachSide * 0.5      // 점프 캐치는 옆으로 못 갑니다
+             : high ? B.reachSide * 0.5                   // 점프 캐치는 옆으로 못 갑니다
              : B.reachSide;
-  const canDive = mode === 'air' && p.y < 1.20;           // 낮은 공만 다이빙 대상
+  const canDive = mode === 'air' && p.y < B.diveHigh;     // 낮은 공만 다이빙 대상
   let best = null;
   for (let k=0;k<G.fielders.length;k++){
     const fd = G.fielders[k], h = fd.home;
@@ -1213,9 +1267,20 @@ function reacherAt(p, t, mode, pen){
       }
       need = react + d/speed;
     }
-    if (need <= t && (!best || need < best.need)) best = { k, need, dive };
+    if (need <= t && (!best || need < best.need))
+      best = { k, need, dive, jump: high && !dive };
   }
   return best;
+}
+
+// 야수 k가 시각 t에 지점 p까지 reach 반경 안으로 따라붙을 수 있는가
+function canReach(k, p, t, reach){
+  const f = CONFIG.field, fd = G.fielders[k];
+  const react = fd.react != null ? fd.react : f.fielderReact;
+  const speed = fd.speed != null ? fd.speed : f.fielderSpeed;
+  const rm    = fd.reachMul != null ? fd.reachMul : 1;
+  const d = Math.max(0, Math.hypot(fd.home.x - p.x, fd.home.z - p.z) - reach*rm);
+  return react + d/speed <= t;
 }
 
 // 처리 야수 말고 그 뒤를 받쳐 주는 야수(백업)
@@ -1253,24 +1318,40 @@ function planPlay(sim){
   // 그 안에 처리하면 평범한 타구, 못 하면 인정 2루타입니다.
   const capI = (sim.wallState === 3 && sim.overI != null) ? sim.overI : sim.path.length;
   const nb = Math.min(firstBounceIndex(sim), capI);
-  const diveOk = Math.random() < B.diveRate;   // 다이빙 성공 여부는 타구당 한 번만 판정
   let muff = null;
 
   // 1) 바운드 없이 잡히는가 — 페어·파울 어디든 잡으면 아웃입니다.
+  //    닿을 수 있으면 점프든 다이빙이든 일단 시도하고, 시도한 플레이는 tryFail 확률로 실패합니다.
   for (let i=6;i<nb;i+=2){
     const p = sim.path[i], t = i/120;
     if (p.y > B.reachHigh || p.y < 0.10) continue;
     const r = reacherAt(p, t, 'air');
     if (!r) continue;
-    if (r.dive && !diveOk) continue;            // 다이빙했지만 못 잡았습니다
+    let kind = r.dive ? 'dive' : r.jump ? 'jump' : null;
+    if (kind){
+      // 몸을 날리기 전에 한 번 더 봅니다. 잠시 뒤 편하게 잡을 수 있는 공이면
+      // 그때 서서 잡습니다. 지금 아니면 못 잡는 공에만 뛰어오르거나 뛰어듭니다.
+      let easier = false;
+      for (let j=i+2;j<nb;j+=2){
+        const q = sim.path[j];
+        if (q.y > B.reachUp || q.y < 0.10) continue;
+        if (canReach(r.k, q, j/120, B.reachSide)){ easier = true; break; }
+      }
+      if (easier) continue;
+    }
+    if (kind && Math.random() < B.tryFail){
+      // 몸을 날렸지만 닿지 않았습니다 — 실책이 아니라 안타입니다.
+      muff = { k: r.k, t, pos: p.clone(), routine: false, kind };
+      break;
+    }
     if (Math.random() >= CONFIG.errorRate)
       return { code:'AIR', t, pos:p.clone(), fielderIdx:r.k, foul: !inFair(p),
-               backupIdx: backupNear(p, r.k) };
+               kind, backupIdx: backupNear(p, r.k) };
     // 놓쳤습니다 — 공은 계속 굴러갑니다.
     // 여유 있게 도착해 잡을 수 있었던 공만 실책으로 기록합니다.
-    // 겨우 닿았거나 다이빙한 공을 못 잡은 것은 실책이 아니라 안타입니다.
-    const routine = !r.dive && (t - r.need) >= CONFIG.routineSlack;
-    muff = { k: r.k, t, pos: p.clone(), routine };
+    // 겨우 닿았거나 몸을 날린 공을 못 잡은 것은 실책이 아니라 안타입니다.
+    const routine = !kind && (t - r.need) >= CONFIG.routineSlack;
+    muff = { k: r.k, t, pos: p.clone(), routine, kind };
     break;
   }
 
@@ -1289,14 +1370,20 @@ function planPlay(sim){
 
   // 공을 놓친 야수는 놓친 자리에서 bobbleDelay 뒤에 다시 움직입니다.
   const pen = muff ? { k: muff.k, t0: muff.t + CONFIG.bobbleDelay, pos: muff.pos } : null;
-  const muffAt = muff ? { pos: muff.pos.clone(), t: muff.t } : null;
+  // muff  = 누가 어디서 놓쳤는가(그 야수의 동선·모션에 씁니다)
+  // muffAt = 놓친 야수가 그대로 회수까지 맡을 때만 채웁니다.
+  //          다른 야수가 회수하는데 이 값을 쓰면 그 야수가 놓친 지점으로 순간이동합니다.
+  const muffInfo = muff ? { k: muff.k, pos: muff.pos.clone(), t: muff.t,
+                            kind: muff.kind || null } : null;
+  const atOf = k => (muffInfo && muffInfo.k === k) ? muffInfo : null;
   // holdT = 야수가 공에 손을 대는 시각, t = 던질 수 있게 되는 시각(더듬으면 그만큼 늦습니다)
   const groundPlan = (p, t, reach) => {
     const bobble = !muff && (reach.k < 5 || reach.k === 8) && Math.random() < CONFIG.errorRate;
     return { code:'GROUND', holdT: t, t: t + (bobble ? CONFIG.bobbleDelay : 0),
              pos: p.clone(), fielderIdx: reach.k, bobble,
              muffed: (muff ? muff.routine : bobble),
-             backupIdx: backupNear(p, reach.k), muffAt };
+             backupIdx: backupNear(p, reach.k),
+             muff: muffInfo, muffAt: atOf(reach.k) };
   };
 
   // 2) 땅에 닿은 뒤 — 페어/파울을 가리며 따라가고, 페어면 회수합니다.
@@ -1366,7 +1453,8 @@ function planPlay(sim){
   return { code:'GROUND', t: gt, holdT: gt,
            pos: last.clone(), fielderIdx: best, bobble: false,
            muffed: (muff ? muff.routine : false),
-           backupIdx: backupNear(last, best), muffAt };
+           backupIdx: backupNear(last, best),
+           muff: muffInfo, muffAt: atOf(best) };
 }
 
 /* ---------- 주자·송구 시간 계산 ---------- */
@@ -1996,7 +2084,31 @@ function calledPitch(){
    타구 진행 — 포구/회수 → 송구 → 결과 순서로 시간에 따라 풀립니다.
    ========================================================================= */
 function resetFielders(){
-  G.fielders.forEach(f=>{ f.mesh.position.copy(f.home); });
+  G.fielders.forEach(f=>{ f.mesh.position.copy(f.home); f.mesh.rotation.set(0,0,0); });
+}
+
+/* 점프·다이빙 캐치 모션 — 포구(또는 시도 실패) 시각을 중심으로 몸을 띄우거나 날립니다.
+   dt  = 지금 시각 − 포구 시각, (dx,dz) = 야수가 공을 향해 달려온 방향             */
+function catchPose(fd, kind, dt, dx, dz){
+  const m = fd.mesh, B = CONFIG.field.body;
+  if (!kind){ m.position.y = 0; m.rotation.set(0,0,0); return; }
+  m.rotation.order = 'YXZ';
+  const len = Math.hypot(dx, dz);
+  if (len > 0.05) m.rotation.y = Math.atan2(dx, dz);        // 공 쪽을 봅니다
+  else m.rotation.y = Math.atan2(-m.position.x, -m.position.z);
+  if (kind === 'jump'){
+    // 포구 순간에 가장 높이 뜹니다
+    const u = clamp(1 - Math.abs(dt)/0.40, 0, 1);
+    m.position.y = B.jump * Math.sin(u*Math.PI/2);
+    m.rotation.x = -0.20*u;                                 // 글러브를 뻗어 젖힌 자세
+  } else {
+    // 뛰어들기 → 착지 → 일어서기
+    const up   = clamp((dt + 0.34)/0.34, 0, 1);
+    const down = 1 - clamp((dt - 0.55)/0.40, 0, 1);
+    const k = Math.max(0, Math.min(up, down));
+    m.rotation.x = 1.30*k;                                  // 발을 축으로 몸을 눕힙니다
+    m.position.y = 1.36 * k * (1 - k);                      // 날아드는 동안만 살짝 뜹니다
+  }
 }
 function baseWorld(i){ return BASE_XZ[i]; }
 
@@ -2042,8 +2154,11 @@ function startBattedBall(contact){
   applyForce(runners);
   recomputeForce(runners);
   // 베이스 커버를 먼저 정합니다. 1루수가 백업을 가느라 1루를 비우면 안 되니까요.
-  const cover = assignCover([plan.fielderIdx]);
+  // 공을 놓친 야수는 그 자리에서 자기 동선이 있으므로 커버·백업에서 빼 둡니다.
+  const muffIdx = plan.muff ? plan.muff.k : null;
+  const cover = assignCover([plan.fielderIdx, muffIdx]);
   const taken = new Set(cover.map(c=>c.idx)); taken.add(plan.fielderIdx);
+  if (muffIdx != null) taken.add(muffIdx);
   const ballAt = plan.pos || { x:0, z:-20 };
 
   // 백업 — 커버를 맡지 않은 야수 중 타구 지점에 가장 가까운 사람
@@ -2109,6 +2224,11 @@ function startBattedBall(contact){
   S.play.backupIdx0 = backupIdx;
   if (S.play.backup) S.play.backupFrom = S.play.backup.mesh.position.clone();
   if (S.play.fielder) S.play.from = S.play.fielder.mesh.position.clone();
+  // 공을 놓친 야수가 회수까지 맡지 않는다면, 그 야수는 자기 자리에서 달려와 시도만 합니다.
+  S.play.muffer = (muffIdx != null && muffIdx !== plan.fielderIdx) ? {
+    idx: muffIdx, fd: G.fielders[muffIdx], pos: plan.muff.pos,
+    t: plan.muff.t, kind: plan.muff.kind,
+    from: G.fielders[muffIdx].mesh.position.clone() } : null;
   S.batted = S.play;                    // 카메라·그림자 등 기존 코드와 호환
   S.phase = 'batted';
   S.camMode = 'follow';
@@ -2216,6 +2336,25 @@ function updateBatted(dt){
     P.fielder.mesh.position.set(lerp(from.x, to.x, k), 0, lerp(from.z, to.z, k));
   }
 
+  // 점프·다이빙 자세 — 잡은 플레이는 plan.kind, 몸을 날렸다 놓친 플레이는 muffAt.kind.
+  // 송구가 시작된 뒤에도 계속 불러야 몸을 일으키는 동작까지 이어집니다.
+  if (P.fielder && P.plan.pos && P.from){
+    const MA = P.plan.muffAt;
+    const pose = P.plan.kind ? { kind: P.plan.kind, t: P.plan.t, pos: P.plan.pos }
+               : (MA && MA.kind) ? { kind: MA.kind, t: MA.t, pos: MA.pos } : null;
+    if (pose) catchPose(P.fielder, pose.kind, P.t - pose.t,
+                        pose.pos.x - P.from.x, pose.pos.z - P.from.z);
+  }
+
+  // 공을 놓친 야수(회수는 다른 야수가 맡는 경우) — 제자리에서 달려와 시도하고 그 자리에 남습니다.
+  if (P.muffer){
+    const mu = P.muffer;
+    const tv = Math.hypot(mu.pos.x - mu.from.x, mu.pos.z - mu.from.z)/CONFIG.field.fielderSpeed;
+    const mk = clamp((P.t - CONFIG.field.fielderReact)/Math.max(0.15, tv), 0, 1);
+    mu.fd.mesh.position.set(lerp(mu.from.x, mu.pos.x, mk), 0, lerp(mu.from.z, mu.pos.z, mk));
+    catchPose(mu.fd, mu.kind, P.t - mu.t, mu.pos.x - mu.from.x, mu.pos.z - mu.from.z);
+  }
+
   // 백업 야수 — 처리 지점 가까이까지 따라 붙습니다. (독립적으로 계속 갱신)
   if (P.backup && P.plan.pos && preThrow){
     const bx = lerp(P.backupFrom.x, P.plan.pos.x, 0.72);
@@ -2229,6 +2368,7 @@ function updateBatted(dt){
   // 베이스 커버 — 타격 순간부터 끊김 없이 각자 베이스로 들어갑니다(송구 중에도 계속).
   if (P.cover) P.cover.forEach(c=>{
     if (c.idx === P.plan.fielderIdx || c.idx === P.holderIdx) return;
+    if (P.muffer && c.idx === P.muffer.idx) return;
     if (P.backupIdx0 != null && c.idx === P.backupIdx0) return;
     if (P.stage === 'throw' && P.thrown){
       if (P.thrown.cut && P.thrown.cut.fielder === c.idx) return;   // 중계맨
@@ -2294,7 +2434,8 @@ function updateBatted(dt){
   // 송구 버튼에 누가 그 베이스를 커버하는지, 제때 도착하는지 표시합니다.
   if (P.stage === 'field' && !isPlayerBatting() && P.cover) updateThrowLabels();
 
-  if (P.airHold && P.stage === 'field'){
+  // 이미 3아웃이라면 던질 이유가 없습니다 — 태그업도 송구도 하지 않고 이닝을 끝냅니다.
+  if (P.airHold && P.stage === 'field' && S.outs + P.outsAdded < 3){
     if (!isPlayerBatting()) cpuTagUp();
     else if (!P.tagThrow){
       // CPU 수비 — 태그업해서 뛰는 주자가 있으면 그 베이스로 던집니다.
@@ -2423,6 +2564,7 @@ function handOffCover(relayIdx, now){
   const used = new Set(P.cover.map(x => x.idx));
   used.add(P.holderIdx); used.add(relayIdx);
   if (P.backupIdx0 != null) used.add(P.backupIdx0);
+  if (P.muffer) used.add(P.muffer.idx);
 
   let pick = COVER_PRIORITY[c.b].find(k => !used.has(k));
   if (pick == null){
@@ -2650,6 +2792,10 @@ function throwPlan(baseIdx, releaseT){
 function doThrow(baseIdx, releaseT){
   const P = S.play;
   if (!P || P.stage !== 'field') return;
+  // 3아웃이 이미 채워졌으면 송구는 의미가 없습니다.
+  if (S.outs + P.outsAdded >= 3){
+    clearTimeout(P.autoThrow); showThrowPanel(false); setHint(''); return;
+  }
   clearTimeout(P.autoThrow);
   showThrowPanel(false);
   setHint('');
@@ -2668,7 +2814,7 @@ function doThrow(baseIdx, releaseT){
     const ux = (P.pos0.x - to[0])/d, uz = (P.pos0.z - to[1])/d;
     // 중계맨은 공을 들고 있는 야수와 백업만 빼고 내야수 누구나 될 수 있습니다.
     // 커버를 맡고 있던 야수가 나가면 아래에서 다른 야수가 그 자리를 이어받습니다.
-    const busy = new Set([P.holderIdx, P.backupIdx0]);
+    const busy = new Set([P.holderIdx, P.backupIdx0, P.muffer ? P.muffer.idx : null]);
     const cands = [1,2,3,4].filter(k=>!busy.has(k));
     if (cands.length === 0) cands.push(0);
     // 공과 중계맨이 가장 빨리 만나는 지점을 선을 따라 찾습니다.
@@ -2732,6 +2878,7 @@ function doThrow(baseIdx, releaseT){
 function doRelay(releaseT){
   const P = S.play, T = CONFIG.field.thr;
   if (!P || P.stage !== 'field') return;
+  if (S.outs + P.outsAdded >= 3){ showThrowPanel(false); setHint(''); return; }
   if (P.throwCount > 0 || !isOutfielder(P.holderIdx)) return;
   clearTimeout(P.autoThrow);
   showThrowPanel(false); setHint('');
@@ -2739,7 +2886,7 @@ function doRelay(releaseT){
   const from = P.pos0;
   const d = Math.hypot(from.x, from.z) || 1;
   const ux = from.x/d, uz = from.z/d;              // 홈 방향으로 들어오는 선
-  const busy = new Set([P.holderIdx, P.backupIdx0]);
+  const busy = new Set([P.holderIdx, P.backupIdx0, P.muffer ? P.muffer.idx : null]);
   const cands = [1,2,3,4].filter(k=>!busy.has(k));
   if (!cands.length) cands.push(0);
 
@@ -3195,7 +3342,7 @@ function playerSwing(type){
 }
 
 const overUI = el => !!(el && el.closest &&
-  el.closest('button, .ctl, #minimap, #scoreboard, #pitchlog, #stamwrap, #role, #lastbtn, #hint, .screen'));
+  el.closest('button, .ctl, #minimap, #scoreboard, #pitchlog, #stamwrap, #role, #lastbtn, #hint, .screen, #helpmodal'));
 
 function bindInput(){
   const el = document.body;
@@ -3224,6 +3371,8 @@ function bindInput(){
 
   addEventListener('keydown', e=>{
     const k = e.key.toLowerCase();
+    // 도움말이 열려 있는 동안에는 Esc 로 닫는 것 말고는 아무 키도 먹지 않습니다.
+    if (helpOpen()){ if (k === 'escape') showHelp(false); return; }
     if (k >= '1' && k <= '6' && !isPlayerBatting() && (S.phase==='pitch_select'||S.phase==='aim')){
       selectPitch(+k - 1); return;
     }
@@ -3264,6 +3413,20 @@ function bindInput(){
 /* =========================================================================
    시작
    ========================================================================= */
+/* ---------- 도움말 ---------- */
+function showHelp(on){
+  $('helpmodal').classList.toggle('on', !!on);
+  if (on) $('helpclose').focus();
+}
+const helpOpen = ()=> $('helpmodal').classList.contains('on');
+
+function bindHelp(){
+  $('helpbtn').onclick = ()=> showHelp(true);
+  $('helpclose').onclick = ()=> showHelp(false);
+  // 창 바깥(어두운 배경)을 눌러도 닫힙니다.
+  $('helpmodal').addEventListener('click', e=>{ if (e.target === $('helpmodal')) showHelp(false); });
+}
+
 function bindMenu(){
   const pick = (wrapId, cb)=>{
     $(wrapId).addEventListener('click', e=>{
@@ -3277,6 +3440,7 @@ function bindMenu(){
   pick('optSide', v=>{ S.playerSide = v; });
 
   $('startbtn').onclick = ()=>{
+    showHelp(false);
     $('title').style.display = 'none';
     $('gameover').style.display = 'none';
     S.phase = 'menu';
@@ -3305,6 +3469,7 @@ function bindMenu(){
   initScene();
   buildPitchButtons();
   bindInput();
+  bindHelp();
   bindMenu();
   setArmedSwing('normal');
   setHint('');
